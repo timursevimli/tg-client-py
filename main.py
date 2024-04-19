@@ -5,7 +5,7 @@ import os
 import aiohttp
 import websockets
 import json
-
+from cachetools import TTLCache
 
 load_dotenv()
 
@@ -37,6 +37,7 @@ class SessionManager:
 
 
 async def destroy(app):
+    await asyncio.sleep(1)
     async for _ in app.get_dialogs():
         pass
     await app.stop()
@@ -110,11 +111,16 @@ async def get_ws():
     return socket
 
 
+def generate_key(chat_id, message_id): 
+    return str(chat_id) + str(message_id)
+
+
 class ClientManager:
     def __init__(self, socket):
         self.session_manager = SessionManager()
         self.socket = socket
         self.prev = None
+        self.cache = TTLCache(maxsize=100, ttl=1)
 
     def init_listeners(self, app):
         @app.on_message()
@@ -122,6 +128,13 @@ class ClientManager:
             message_object = parse_message(message)
             if (message_object is None):
                 return
+            chat_id = message_object["id"]
+            message_id = message_object["messageId"]
+            key = generate_key(chat_id, message_id)
+            if(self.cache.get(key) is not None):
+                # print("cache hit!!!")
+                return;
+            self.cache[key] = True
             asyncio.create_task(ws_send_message(self.socket, message_object))
             # print(message_object)
 
@@ -130,7 +143,7 @@ class ClientManager:
         app = Client(session, api_id=API_ID, api_hash=API_HASH)
         self.init_listeners(app)
         if (self.prev is not None):
-            await destroy(self.prev)
+            asyncio.create_task(destroy(self.prev))
         self.prev = app
         return app
 
