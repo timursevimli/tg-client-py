@@ -3,3 +3,4 @@ websockets
 pyrogram
 TgCrypto
 python-dotenv
+cachetools
