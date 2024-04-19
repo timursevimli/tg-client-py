@@ -1,17 +1,13 @@
-from pyrogram import Client
+from pyrogram import Client, enums
 import asyncio
 import os
-import requests
+import aiohttp
+import websockets
+import json
 
 
-URL = os.environ.get('URL', 'http://localhost:7777/message')
-
-
-class Data:
-    def __init__(self,id, text, is_photo):
-        self.id = id
-        self.text = text
-        self.is_photo = is_photo
+HTTP_URL = os.environ.get('HTTP_URL', 'http://localhost:7777/message')
+WS_URL = os.environ.get('WS_URL', 'ws://localhost:7777')
 
 
 class SessionManager:
@@ -46,72 +42,111 @@ async def destroy(app):
     await app.stop()
 
 
-def parse_message(message) -> dict:
+async def ping(url):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as res:
+            if (res.status != 200):
+                raise Exception('Wrong status code: ' + str(res.status))
+
+
+def parse_message(message) -> dict | None:
     chat_id = message.chat.id
-    text = message.text
-    is_photo = False
+    message_id = message.id
+    date = message.date
+    chat_type = message.chat.type
+    text = message.text or message.caption
     if (text is None):
-        text = message.caption
-        is_photo = True
+        return None
+    if (chat_type == enums.ChatType.CHANNEL):
+        chat_type = 'channel'
+    elif (chat_type == enums.ChatType.SUPERGROUP):
+        chat_type = 'supergroup'
+    elif (chat_type == enums.ChatType.GROUP):
+        chat_type = 'group'
+    else:
+        return None
 
     message_data = {
-        "chat_id": chat_id,
+        "id": chat_id,
         "text": text,
-        "photo": is_photo
+        "messageId": message_id,
+        "date": date.timestamp(),
+        "type": chat_type
     }
 
     return message_data
 
 
-def send_message(message_object):
+async def http_send_message(message_object):
     try:
-        requests.post(URL, message_object)
+        async with aiohttp.ClientSession() as session:
+            await session.post(HTTP_URL, json=message_object)
     except Exception as e:
-        print(e)
-
-
-def client_manager():
-    api_id, api_hash = get_credentials()
-    session_manager = SessionManager()
-
-    def init_listeners(app):
-        @app.on_message()
-        def _(_, message):
-            message_object = parse_message(message)
-            print(message_object)
-            send_message(message_object)
-
-    def get_client():
-        session = session_manager.get_session()
-        app = Client(session, api_id=api_id, api_hash=api_hash)
-        init_listeners(app)
-        return app
-
-    return get_client
-
-
-def ping(url):
-    try:
-        req = requests.get(url)
-        if (req.status_code != 200):
-            raise Exception('Wrong status code: ' + str(req.status_code))
-    except Exception as e:
-        print(e)
+        print(f'HTTP send error: {e}')
         exit(1)
 
 
-async def main():
-    prev = None
-    get_client = client_manager()
+async def ws_send_message(socket, message_object):
+    try:
+        await socket.send(json.dumps(message_object))
+    except Exception as e:
+        print(f'Websocket send error: {e}')
+        exit(1)
+
+
+async def keep_alive(socket):
+    ping_interval = 30
     while True:
-        app = get_client()
+        try:
+            await socket.ping()
+            # print("Ping sended!")
+            await asyncio.sleep(ping_interval)
+        except Exception as e:
+            raise Exception(f"Error: {e}")
+
+
+async def get_ws():
+    socket = await websockets.connect(WS_URL)
+    asyncio.create_task(keep_alive(socket))
+    return socket
+
+
+class ClientManager:
+    def __init__(self, socket):
+        self.session_manager = SessionManager()
+        api_id, api_hash = get_credentials()
+        self.api_id = api_id
+        self.api_hash = api_hash
+        self.socket = socket
+        self.prev = None
+
+    def init_listeners(self, app):
+        @app.on_message()
+        async def _(_, message):
+            message_object = parse_message(message)
+            if (message_object is None):
+                return
+            asyncio.create_task(ws_send_message(self.socket, message_object))
+            # print(message_object)
+
+    async def get_client(self):
+        session = self.session_manager.get_session()
+        api_id, api_hash = self.api_id, self.api_hash
+        app = Client(session, api_id=api_id, api_hash=api_hash)
+        self.init_listeners(app)
+        if (self.prev is not None):
+            await destroy(self.prev)
+        self.prev = app
+        return app
+
+
+async def main():
+    socket = await get_ws()
+    client_manager = ClientManager(socket)
+    while True:
+        app = await client_manager.get_client()
         await app.start()
-        # print('Connected!')
-        if (prev is not None):
-            await destroy(prev)
-        prev = app
         await asyncio.sleep(15)
 
 
-ping(URL)
 asyncio.run(main())
