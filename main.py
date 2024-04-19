@@ -1,9 +1,13 @@
+from dotenv import load_dotenv
 from pyrogram import Client, enums
 import asyncio
 import os
 import aiohttp
 import websockets
 import json
+
+
+load_dotenv()
 
 
 HTTP_URL = os.environ.get('HTTP_URL', 'http://localhost:7777/message')
