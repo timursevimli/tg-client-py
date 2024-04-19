@@ -1,3 +1,4 @@
-requests
+aiohttp
+websockets
 pyrogram
 TgCrypto
