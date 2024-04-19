@@ -10,8 +10,14 @@ import json
 load_dotenv()
 
 
+PING_INTERVAL = 30
 HTTP_URL = os.environ.get('HTTP_URL', 'http://localhost:7777/message')
 WS_URL = os.environ.get('WS_URL', 'ws://localhost:7777')
+API_ID = int(os.environ['TG_API_ID']) if 'TG_API_ID' in os.environ else None
+API_HASH = os.environ.get('TG_API_HASH')
+if (API_ID is None or API_HASH is None):
+    msg = 'Please set TG_API_ID and TG_API_HASH in environment variables'
+    raise Exception(msg)
 
 
 class SessionManager:
