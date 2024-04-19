@@ -36,16 +36,6 @@ class SessionManager:
         return "sessions/" + session
 
 
-def get_credentials():
-    api_id = int(os.environ['TG_API_ID']) if 'TG_API_ID' in os.environ else None
-    api_hash = os.environ.get('TG_API_HASH')
-
-    if (api_id is None or api_hash is None):
-        raise Exception('Please set TG_API_ID and TG_API_HASH in environment variables')
-
-    return api_id, api_hash
-
-
 async def destroy(app):
     async for _ in app.get_dialogs():
         pass
