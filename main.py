@@ -95,12 +95,11 @@ async def ws_send_message(socket, message_object):
 
 
 async def keep_alive(socket):
-    ping_interval = 30
     while True:
         try:
             await socket.ping()
             # print("Ping sended!")
-            await asyncio.sleep(ping_interval)
+            await asyncio.sleep(PING_INTERVAL)
         except Exception as e:
             raise Exception(f"Error: {e}")
 
@@ -114,9 +113,6 @@ async def get_ws():
 class ClientManager:
     def __init__(self, socket):
         self.session_manager = SessionManager()
-        api_id, api_hash = get_credentials()
-        self.api_id = api_id
-        self.api_hash = api_hash
         self.socket = socket
         self.prev = None
 
@@ -131,8 +127,7 @@ class ClientManager:
 
     async def get_client(self):
         session = self.session_manager.get_session()
-        api_id, api_hash = self.api_id, self.api_hash
-        app = Client(session, api_id=api_id, api_hash=api_hash)
+        app = Client(session, api_id=API_ID, api_hash=API_HASH)
         self.init_listeners(app)
         if (self.prev is not None):
             await destroy(self.prev)
