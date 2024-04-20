@@ -55,9 +55,11 @@ def parse_message(message) -> dict | None:
     message_id = message.id
     date = message.date
     chat_type = message.chat.type
-    text = message.text or message.caption
-    if (text is None):
+    message = message.text or message.caption
+
+    if (message is None):
         return None
+
     if (chat_type == enums.ChatType.CHANNEL):
         chat_type = 'channel'
     elif (chat_type == enums.ChatType.SUPERGROUP):
@@ -68,8 +70,8 @@ def parse_message(message) -> dict | None:
         return None
 
     message_data = {
-        "id": chat_id,
-        "text": text,
+        "channelId": chat_id,
+        "message": message,
         "messageId": message_id,
         "date": date.timestamp(),
         "type": chat_type
@@ -111,8 +113,8 @@ async def get_ws():
     return socket
 
 
-def generate_key(chat_id, message_id): 
-    return str(chat_id) + str(message_id)
+def generate_key(channel_id, message_id): 
+    return str(channel_id) + str(message_id)
 
 
 class ClientManager:
@@ -128,9 +130,9 @@ class ClientManager:
             message_object = parse_message(message)
             if (message_object is None):
                 return
-            chat_id = message_object["id"]
+            channel_id = message_object["channelId"]
             message_id = message_object["messageId"]
-            key = generate_key(chat_id, message_id)
+            key = generate_key(channel_id, message_id)
             if(self.cache.get(key) is not None):
                 # print("cache hit!!!")
                 return;
