@@ -50,12 +50,12 @@ async def ping(url):
                 raise Exception('Wrong status code: ' + str(res.status))
 
 
-def parse_message(message) -> dict | None:
-    chat_id = message.chat.id
-    message_id = message.id
-    date = message.date
-    chat_type = message.chat.type
-    message = message.text or message.caption
+def parse_message(message_data) -> dict | None:
+    chat_id = message_data.chat.id
+    message_id = message_data.id
+    date = message_data.date
+    chat_type = message_data.chat.type
+    message = message_data.text or message_data.caption
 
     if (message is None):
         return None
@@ -69,7 +69,7 @@ def parse_message(message) -> dict | None:
     else:
         return None
 
-    message_data = {
+    result = {
         "channelId": chat_id,
         "message": message,
         "messageId": message_id,
@@ -77,7 +77,7 @@ def parse_message(message) -> dict | None:
         "type": chat_type
     }
 
-    return message_data
+    return result
 
 
 async def http_send_message(message_object):
@@ -133,7 +133,7 @@ class ClientManager:
             channel_id = message_object["channelId"]
             message_id = message_object["messageId"]
             key = generate_key(channel_id, message_id)
-            if(self.cache.get(key) is not None):
+            if (self.cache.get(key) is not None):
                 # print("cache hit!!!")
                 return;
             self.cache[key] = True
@@ -144,7 +144,9 @@ class ClientManager:
         session = self.session_manager.get_session()
         app = Client(session, api_id=API_ID, api_hash=API_HASH)
         self.init_listeners(app)
+        await app.start()
         if (self.prev is not None):
+            # print("reconnecting!")
             asyncio.create_task(destroy(self.prev))
         self.prev = app
         return app
@@ -154,8 +156,7 @@ async def main():
     socket = await get_ws()
     client_manager = ClientManager(socket)
     while True:
-        app = await client_manager.get_client()
-        await app.start()
+        await client_manager.get_client()
         await asyncio.sleep(15)
 
 
