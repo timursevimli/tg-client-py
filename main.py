@@ -9,6 +9,8 @@ from cachetools import TTLCache
 
 load_dotenv()
 
+RESTART_INTERVAL = 5
+SESSION_INTERVAL = 15
 CACHE_TTL = 10
 CACHE_MAXSIZE = 300
 PING_INTERVAL = 30
@@ -161,10 +163,10 @@ async def main():
             client_manager = ClientManager(socket)
             while True:
                 await client_manager.get_client()
-                await asyncio.sleep(15)
+                await asyncio.sleep(SESSION_INTERVAL)
         except Exception as e:
             print(f'An error ocurred: {e}')
-            await asyncio.sleep(5)
+            await asyncio.sleep(RESTART_INTERVAL)
             continue
 
 asyncio.run(main())
