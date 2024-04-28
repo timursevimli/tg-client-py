@@ -138,7 +138,7 @@ class ClientManager:
                 return;
             self.cache[key] = True
             asyncio.create_task(ws_send_message(self.socket, message_object))
-            # print(message_object)
+            print(message_object)
 
     async def get_client(self):
         session = self.session_manager.get_session()
@@ -153,11 +153,17 @@ class ClientManager:
 
 
 async def main():
-    socket = await get_ws()
-    client_manager = ClientManager(socket)
     while True:
-        await client_manager.get_client()
-        await asyncio.sleep(15)
-
+        try:
+            socket = await get_ws()
+            print("Connected to the server!")
+            client_manager = ClientManager(socket)
+            while True:
+                await client_manager.get_client()
+                await asyncio.sleep(15)
+        except Exception as e:
+            print(f'An error ocurred: {e}')
+            await asyncio.sleep(5)
+            continue
 
 asyncio.run(main())
