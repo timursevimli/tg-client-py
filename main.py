@@ -154,10 +154,10 @@ class ClientManager:
 
 
 async def main():
+    socket = await get_ws()
+    print("Connected to the server!")
     while True:
         try:
-            socket = await get_ws()
-            print("Connected to the server!")
             client_manager = ClientManager(socket)
             while True:
                 await client_manager.get_client()
