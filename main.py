@@ -9,7 +9,8 @@ from cachetools import TTLCache
 
 load_dotenv()
 
-
+CACHE_TTL = 10
+CACHE_MAXSIZE = 300
 PING_INTERVAL = 30
 HTTP_URL = os.environ.get('HTTP_URL', 'http://localhost:7777/message')
 WS_URL = os.environ.get('WS_URL', 'ws://localhost:7777')
@@ -122,7 +123,7 @@ class ClientManager:
         self.session_manager = SessionManager()
         self.socket = socket
         self.prev = None
-        self.cache = TTLCache(maxsize=100, ttl=1)
+        self.cache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL)
 
     def init_listeners(self, app):
         @app.on_message()
