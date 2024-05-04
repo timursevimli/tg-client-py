@@ -2,8 +2,10 @@ from dotenv import load_dotenv
 from pyrogram import Client, enums
 import asyncio
 import os
-import aiohttp
-import websockets
+import threading
+import websocket
+import datetime
+import ssl
 import json
 from cachetools import TTLCache
 
@@ -14,14 +16,18 @@ SESSION_INTERVAL = 15
 CACHE_TTL = 10
 CACHE_MAXSIZE = 300
 PING_INTERVAL = 30
-HTTP_URL = os.environ.get('HTTP_URL', 'http://localhost:7777/message')
-WS_URL = os.environ.get('WS_URL', 'ws://localhost:7777')
+WS_URL = os.environ.get('WS_URL', 'wss://localhost:7777')
 API_ID = int(os.environ['TG_API_ID']) if 'TG_API_ID' in os.environ else None
 API_HASH = os.environ.get('TG_API_HASH')
-if (API_ID is None or API_HASH is None):
-    msg = 'Please set TG_API_ID and TG_API_HASH in environment variables'
+API_KEY = os.environ.get('API_KEY')
+
+if (API_ID is None or API_HASH is None or API_KEY is None):
+    msg = 'Please set environment variables'
     raise Exception(msg)
 
+
+connection_open_event = threading.Event()
+connection_closed_event = threading.Event()
 
 class SessionManager:
     def __init__(self):
@@ -46,13 +52,6 @@ async def destroy(app):
     await app.stop()
 
 
-async def ping(url):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as res:
-            if (res.status != 200):
-                raise Exception('Wrong status code: ' + str(res.status))
-
-
 def parse_message(message_data) -> dict | None:
     chat_id = message_data.chat.id
     message_id = message_data.id
@@ -72,48 +71,71 @@ def parse_message(message_data) -> dict | None:
     else:
         return None
 
+    current_time = datetime.datetime.now().timestamp()
+    message_time = date.timestamp()
+    difference_time = current_time - message_time
+
     result = {
         "channelId": chat_id,
         "message": message,
         "messageId": message_id,
-        "date": date.timestamp(),
-        "type": chat_type
+        "type": chat_type,
+        "messageTime": message_time,
+        "currentTime": current_time,
+        "differenceTime": difference_time
     }
 
     return result
 
 
-async def http_send_message(message_object):
-    try:
-        async with aiohttp.ClientSession() as session:
-            await session.post(HTTP_URL, json=message_object)
-    except Exception as e:
-        print(f'HTTP send error: {e}')
-        exit(1)
-
-
 async def ws_send_message(socket, message_object):
     try:
-        await socket.send(json.dumps(message_object))
+        socket.send(json.dumps(message_object))
     except Exception as e:
         print(f'Websocket send error: {e}')
         exit(1)
 
 
-async def keep_alive(socket):
-    while True:
-        try:
-            await socket.ping()
-            # print("Ping sended!")
-            await asyncio.sleep(PING_INTERVAL)
-        except Exception as e:
-            raise Exception(f"Error: {e}")
+def on_error(_, error):
+    print(error)
+    exit(1)
+
+
+def on_message(_, message):
+    print(message)
+
+
+def on_close(_, code, message):
+    if code != None:
+        print(code, message)
+    connection_closed_event.set()
+    raise Exception('Websocket connection closed!')
+
+
+def on_open(_):
+    connection_open_event.set()
+    print('Websocket connection established!')
+
+
+def run_ws(ws):
+    ws.run_forever(ping_interval=PING_INTERVAL, sslopt={"cert_reqs": ssl.CERT_NONE})
 
 
 async def get_ws():
-    socket = await websockets.connect(WS_URL)
-    asyncio.create_task(keep_alive(socket))
-    return socket
+    header = { 'x-api-key': API_KEY }
+    ws = websocket.WebSocketApp(WS_URL, header,
+        on_error=on_error,
+        on_close=on_close,
+        on_open=on_open,
+        on_message=on_message,
+    )
+    threading.Thread(target=run_ws, args=(ws,)).start()
+    while not connection_open_event.is_set():
+        if connection_closed_event.is_set():
+            raise Exception('Websocket connection closed!')
+        print("Waiting for connection...")
+        connection_open_event.wait(timeout=1)
+    return ws
 
 
 def generate_key(channel_id, message_id): 
@@ -157,7 +179,6 @@ class ClientManager:
 
 async def main():
     socket = await get_ws()
-    print("Connected to the server!")
     while True:
         try:
             client_manager = ClientManager(socket)
@@ -169,4 +190,12 @@ async def main():
             await asyncio.sleep(RESTART_INTERVAL)
             continue
 
-asyncio.run(main())
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Keyboard interrupt detected. Exiting...")
+        exit(0)
+    except Exception as e:
+        print(f'An error occurred: {e}')
+        exit(1)
