@@ -1,4 +1,4 @@
-websocket
+websocket-client
 pyrogram
 TgCrypto
 python-dotenv
