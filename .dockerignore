@@ -22,3 +22,4 @@ coverage.xml
 LICENSE
 README.md
 experiment.py
+sessions/*
