@@ -23,3 +23,5 @@ LICENSE
 README.md
 experiment.py
 sessions/*
+*.zip
+*.tar
