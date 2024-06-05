@@ -26,8 +26,12 @@ if (API_ID == 0 or API_HASH == '' or API_KEY == ''):
     raise Exception(msg)
 
 
-connection_open_event = threading.Event()
+with open('config.json', 'r') as f:
+    config = json.load(f)
 
+ignored_channels = config["ignored_channels"]
+
+connection_open_event = threading.Event()
 
 class SessionManager:
     def __init__(self):
@@ -153,6 +157,8 @@ class ClientManager:
             if (message_object is None):
                 return
             channel_id = message_object["channelId"]
+            if (channel_id in ignored_channels):
+                return
             message_id = message_object["messageId"]
             key = generate_key(channel_id, message_id)
             if (self.cache.get(key) is not None):
