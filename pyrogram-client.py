@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from pyrogram import Client, enums
+from pyrogram.client import Client
 import asyncio
 import os
 import threading
@@ -17,17 +17,17 @@ CACHE_TTL = 10
 CACHE_MAXSIZE = 300
 PING_INTERVAL = 30
 WS_URL = os.environ.get('WS_URL', 'wss://localhost:7777')
-API_ID = int(os.environ['TG_API_ID']) if 'TG_API_ID' in os.environ else None
-API_HASH = os.environ.get('TG_API_HASH')
-API_KEY = os.environ.get('API_KEY')
+API_ID = int(os.environ['TG_API_ID']) or 0
+API_HASH = os.environ.get('TG_API_HASH') or ''
+API_KEY = os.environ.get('API_KEY') or ''
 
-if (API_ID is None or API_HASH is None or API_KEY is None):
+if (API_ID == 0 or API_HASH == '' or API_KEY == ''):
     msg = 'Please set environment variables'
     raise Exception(msg)
 
 
 connection_open_event = threading.Event()
-connection_closed_event = threading.Event()
+
 
 class SessionManager:
     def __init__(self):
@@ -52,23 +52,24 @@ async def destroy(app):
     await app.stop()
 
 
+def convert_to_ms(timestamp):
+    return int(timestamp * 1000)
+
+
+def parse_chat_id(number):
+    number = abs(number)
+    if number >= 1000000000000:
+        number %= 1000000000000
+    return number
+
+
 def parse_message(message_data) -> dict | None:
     chat_id = message_data.chat.id
     message_id = message_data.id
     date = message_data.date
-    chat_type = message_data.chat.type
     message = message_data.text or message_data.caption
 
-    if (message is None):
-        return None
-
-    if (chat_type == enums.ChatType.CHANNEL):
-        chat_type = 'channel'
-    elif (chat_type == enums.ChatType.SUPERGROUP):
-        chat_type = 'supergroup'
-    elif (chat_type == enums.ChatType.GROUP):
-        chat_type = 'group'
-    else:
+    if message is None:
         return None
 
     current_time = datetime.datetime.now().timestamp()
@@ -76,13 +77,12 @@ def parse_message(message_data) -> dict | None:
     difference_time = current_time - message_time
 
     result = {
-        "channelId": chat_id,
+        "channelId": parse_chat_id(chat_id),
         "message": message,
         "messageId": message_id,
-        "type": chat_type,
-        "messageTime": message_time,
-        "currentTime": current_time,
-        "differenceTime": difference_time
+        "messageTime": convert_to_ms(message_time),
+        "currentTime": convert_to_ms(current_time),
+        "differenceTime": convert_to_ms(difference_time)
     }
 
     return result
@@ -93,12 +93,12 @@ async def ws_send_message(socket, message_object):
         socket.send(json.dumps(message_object))
     except Exception as e:
         print(f'Websocket send error: {e}')
-        exit(1)
+        os._exit(1)
 
 
 def on_error(_, error):
     print(error)
-    exit(1)
+    os._exit(1)
 
 
 def on_message(_, message):
@@ -107,8 +107,7 @@ def on_message(_, message):
 
 def on_close(_, code, message):
     if code != None:
-        print(code, message)
-    connection_closed_event.set()
+        print('Connection closed with code: ' + str(code), message)
     raise Exception('Websocket connection closed!')
 
 
@@ -122,7 +121,7 @@ def run_ws(ws):
 
 
 async def get_ws():
-    header = { 'x-api-key': API_KEY }
+    header = { 'Authorization': 'Bearer ' + API_KEY }
     ws = websocket.WebSocketApp(WS_URL, header,
         on_error=on_error,
         on_close=on_close,
@@ -131,8 +130,6 @@ async def get_ws():
     )
     threading.Thread(target=run_ws, args=(ws,)).start()
     while not connection_open_event.is_set():
-        if connection_closed_event.is_set():
-            raise Exception('Websocket connection closed!')
         print("Waiting for connection...")
         connection_open_event.wait(timeout=1)
     return ws
@@ -195,7 +192,7 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("Keyboard interrupt detected. Exiting...")
-        exit(0)
+        os._exit(0)
     except Exception as e:
         print(f'An error occurred: {e}')
-        exit(1)
+        os._exit(1)
