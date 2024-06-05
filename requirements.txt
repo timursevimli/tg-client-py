@@ -3,3 +3,4 @@ pyrogram
 TgCrypto
 python-dotenv
 cachetools
+telethon
